@@ -25,7 +25,7 @@ main_keyboard = telegram.ReplyKeyboardMarkup([
 
 
 class User:
-    def __init__(self, userid, worlds=0, balance=0, notifications=True, stage=0):
+    def __init__(self, userid, worlds=0, balance=5, notifications=True, stage=0):
         self.id = userid
         self.worlds = worlds
         self.balance = balance
