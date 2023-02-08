@@ -1,10 +1,12 @@
 import asyncio
 import numpy as np
+import pandas as pd
 import os
 from scipy.ndimage import gaussian_filter
 import telegram
 import time
 from PIL import Image, ImageDraw
+import json
 
 
 user_dict = {}
@@ -20,18 +22,18 @@ main_keyboard = telegram.ReplyKeyboardMarkup([
      telegram.KeyboardButton("Настройки")]
 ], resize_keyboard=True)
 
-
-#test_img = Image.open("Maps/Output.png").convert('RGB')
+glob_token = "TOKEN"
+glob_admins = []
 
 
 class User:
-    def __init__(self, userid, worlds=0, balance=5, notifications=True, stage=0):
+    def __init__(self, userid, worlds=0, balance=0, notifications=True, stage=0):
         self.id = userid
         self.worlds = worlds
         self.balance = balance
         self.notifications = notifications
         self.stage = stage
-        self.last_time = [time.time() for i in range(0, 5)]
+        self.last_time = []
 
         self.map = None
 
@@ -73,6 +75,12 @@ class World:
             int(np.ceil(self.width / 100)),
             int(np.ceil(self.height / 100))
         ) * 0.15
+
+        detail_arrays[100][4][3] = 0.15 + (0.1 - h)
+        detail_arrays[100][3][3] = 0.15 + (0.1 - h)
+
+        detail_arrays[23][self.width // 46][self.height // 46] = 0.15
+
         vals = {
             1: 0.8,
             7: 1.2,
@@ -179,9 +187,9 @@ class Bot:
                             asyncio.create_task(self.triggers[text].do(self.bot, user))
 
                         if len(text) > 7:
-                            if text[1:6] == 'send ' and user == 352422311:
+                            if text[1:6] == 'send ' and user in glob_admins:
                                 asyncio.create_task(self.mass_sending(text[6:]))
-
+                await asyncio.sleep(1)
             else:
                 await asyncio.sleep(1)
 
@@ -286,7 +294,7 @@ async def bot_notification_disabled(bot: telegram.Bot, user):
 
 
 async def bot_help(bot: telegram.Bot, user):
-    await bot.sendMessage(user, "Текущая версия: 1-Альфа\n\n" +
+    await bot.sendMessage(user, "Текущая версия: 2-Альфа\n\n" +
                           "Команды:\n" +
                           "/reset — вернуться в основное меню\n" +
                           "/help — получить информацию о командах\n" +
@@ -340,16 +348,13 @@ async def bot_back(bot: telegram.Bot, user):
 async def bot_create_map(bot: telegram.Bot, user):
     if user_dict[user].stage == 1:
         #Проверка баланса
-        if user_dict[user].balance < user_dict[user].worlds + 5:
-            user_dict[user].last_time.sort()
+        if len(user_dict[user].last_time) > 0:
+            new_list = []
             for i in range(0, len(user_dict[user].last_time)):
-                if time.time() - user_dict[user].last_time[i] > 3600:
-                    user_dict[user].balance += 1
-                else:
-                    break
-                if user_dict[user].balance >= user_dict[user].worlds + 5:
-                    break
-        if user_dict[user].balance <= user_dict[user].worlds:
+                if time.time() - user_dict[user].last_time[i] <= 3600:
+                    new_list.append(user_dict[user].last_time[i])
+            user_dict[user].last_time = new_list
+        if len(user_dict[user].last_time) >= user_dict[user].balance:
             await bot.sendMessage(user, "Невозможно создать карту! Баланс меньше нуля!")
             return
         #Создание карты
@@ -365,17 +370,16 @@ async def bot_create_map(bot: telegram.Bot, user):
         img_send.close()
         user_dict[user].stage = 1
         user_dict[user].worlds += 1
-        user_dict[user].last_time.sort()
-        user_dict[user].last_time[0] = time.time()
+        user_dict[user].last_time.append(time.time())
         await bot.sendMessage(user, "Создано карт: " + str(user_dict[user].worlds) + '\n' +
-                              "Баланс: " + str(user_dict[user].balance - user_dict[user].worlds) + ' карт\n' +
+                              "Баланс: " + str(user_dict[user].balance - len(user_dict[user].last_time)) + ' карт\n' +
                               "Баланс восполняется в течение часа!")
         return
     await bot_incorrect(bot, user)
 
 
 async def main():
-    bot = Bot("TOKEN")
+    bot = Bot(glob_token)
     asyncio.create_task(bot.push_event(
         Event(
             message="/start",
@@ -470,8 +474,13 @@ if __name__ == "__main__":
             else:
                 user_dict[int(data[0])] = User(int(data[0]),
                                                worlds=int(data[1]),
-                                               balance=int(data[2]),
+                                               balance=int(10),
                                                notifications=bool(int(data[3])),
                                                stage=int(data[4]))
         save.close()
+    load_settings = open("Settings.json", 'r')
+    settings = json.load(load_settings)
+    load_settings.close()
+    glob_token = settings['token']
+    glob_admins = settings['admins']
     asyncio.run(main())
